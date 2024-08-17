@@ -25,8 +25,8 @@ function SearchContainer() {
     const formData = new FormData(e.currentTarget);
     const search = formData.get('search') as string;
     const jobStatus = formData.get('jobStatus') as string;
-    params.set('search', search);
-    params.set('jobStatus', jobStatus);
+    params.set('search', search.toLowerCase()); 
+    params.set('jobStatus', jobStatus.toLowerCase());
 
     router.push(`${pathname}?${params.toString()}`);
   };

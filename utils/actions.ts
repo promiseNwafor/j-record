@@ -58,50 +58,42 @@ export async function getAllJobsAction({
   totalPages: number;
 }> {
   const userId = authenticateAndRedirect();
-  // await new Promise((resolve) => setTimeout(resolve, 5000));
 
   try {
-    let whereClause: Prisma.JobWhereInput = {
-      clerkId: userId,
-    };
-    if (search) {
-      whereClause = {
-        ...whereClause,
-        OR: [
-          {
-            position: {
-              contains: search,
-            },
-          },
-          {
-            company: {
-              contains: search,
-            },
-          },
-        ],
-      };
-    }
-    if (jobStatus && jobStatus !== 'all') {
-      whereClause = {
-        ...whereClause,
-        status: jobStatus,
-      };
-    }
     const skip = (page - 1) * limit;
 
-    const jobs: JobType[] = await prisma.job.findMany({
-      where: whereClause,
-      skip,
-      take: limit,
-      orderBy: {
-        createdAt: 'desc',
-      },
-    });
-    const count: number = await prisma.job.count({
-      where: whereClause,
-    });
+    let whereClause: string[] = [`"clerkId" = $1`];
+    let params: any[] = [userId];
+
+    // Add case-insensitive search conditions if `search` is provided
+    if (search) {
+      whereClause.push(`("position" ILIKE $${params.length + 1} OR "company" ILIKE $${params.length + 2})`);
+      params.push(`%${search}%`, `%${search}%`);
+    }
+
+    if (jobStatus && jobStatus !== 'all') {
+      whereClause.push(`"status" = $${params.length + 1}`);
+      params.push(jobStatus);
+    }
+
+    const whereClauseStr = whereClause.join(' AND ');
+    const jobsQuery = `
+      SELECT * FROM "Job"
+      WHERE ${whereClauseStr}
+      ORDER BY "createdAt" DESC
+      OFFSET $${params.length + 1} LIMIT $${params.length + 2}
+    `;
+    const countQuery = `
+      SELECT COUNT(*) FROM "Job"
+      WHERE ${whereClauseStr}
+    `;
+
+    const jobs = await prisma.$queryRawUnsafe(jobsQuery, ...params, skip, limit);
+    const countResult = await prisma.$queryRawUnsafe(countQuery, ...params);
+    const count = parseInt((countResult as any)[0].count, 10);
     const totalPages = Math.ceil(count / limit);
-    return { jobs, count, page, totalPages };
+
+    return { jobs: jobs as JobType[], count, page, totalPages };
   } catch (error) {
     console.error(error);
     return { jobs: [], count: 0, page: 1, totalPages: 0 };
